@@ -26,6 +26,91 @@ const ROUTES: Route[] = [
   { method: "GET", path: "/api/admin/orders/list", rpc: "admin.orders.list" }
 ];
 
+const BRIDGE_PATHS = new Set([
+  "/api/wallet",
+  "/api/wallet/ledger",
+  "/api/wallet/exchange",
+  "/api/recharge/create",
+  "/api/recharge/cancel",
+  "/api/recharge/status",
+  "/api/redeem/use",
+  "/api/orders/refund",
+  "/api/orders/policy",
+  "/api/notifications/list",
+  "/api/notifications/unread-count",
+  "/api/notifications/mark-read",
+  "/api/meta/currency",
+  "/api/meta/materials",
+  "/api/meta/material-overrides",
+  "/api/meta/market-tags",
+  "/api/meta/locales",
+  "/api/meta/themes",
+  "/api/leaderboard/config",
+  "/api/leaderboard/list",
+  "/api/market/listings",
+  "/api/market/listings/create",
+  "/api/market/buy",
+  "/api/market/sell-to-buy",
+  "/api/market/bid",
+  "/api/market/unlist",
+  "/api/market/pause",
+  "/api/market/resume",
+  "/api/market/price",
+  "/api/market/remark",
+  "/api/market/settings",
+  "/api/market/supply/refresh",
+  "/api/admin/auth/logout",
+  "/api/admin/redeem/create",
+  "/api/admin/redeem/list",
+  "/api/admin/products/upsert",
+  "/api/admin/products/active",
+  "/api/admin/products/reset-limit",
+  "/api/admin/group-buy/consume",
+  "/api/admin/economy/settings",
+  "/api/admin/economy/exchange",
+  "/api/admin/economy/market",
+  "/api/admin/economy/leaderboard",
+  "/api/admin/economy/currency",
+  "/api/admin/economy/recharge-payment",
+  "/api/admin/market/tags-config",
+  "/api/admin/market/limitation-config",
+  "/api/admin/system/webshop",
+  "/api/admin/system/market",
+  "/api/admin/system/maintenance",
+  "/api/admin/system/logging",
+  "/api/admin/system/broadcast",
+  "/api/admin/system/notification",
+  "/api/admin/visual/settings",
+  "/api/admin/material-overrides/list",
+  "/api/admin/material-overrides/upsert",
+  "/api/admin/material-overrides/delete",
+  "/api/admin/market/listings",
+  "/api/admin/market/unlist",
+  "/api/admin/users/lookup",
+  "/api/admin/users/list",
+  "/api/admin/users/reset-password",
+  "/api/admin/users/unbind",
+  "/api/admin/users/logout",
+  "/api/admin/users/wallet-adjust",
+  "/api/admin/users/visual-permission",
+  "/api/admin/audit/list",
+  "/api/admin/overview/stats",
+  "/api/admin/notifications/announce",
+  "/api/admin/admin-users/meta",
+  "/api/admin/admin-users/list",
+  "/api/admin/admin-users/upsert",
+  "/api/admin/admin-users/active",
+  "/api/admin/locales",
+  "/api/admin/locales/default",
+  "/api/admin/locales/action",
+  "/api/admin/locales/sync-manifest",
+  "/api/admin/themes",
+  "/api/admin/themes/default",
+  "/api/admin/themes/action",
+  "/api/admin/themes/sync-manifest",
+  "/api/admin/l10n/manifest"
+]);
+
 export async function api(request: Request, env: Env): Promise<Response> {
   const url = new URL(request.url);
   if (url.pathname === "/api/relay/status") {
@@ -54,7 +139,7 @@ export async function api(request: Request, env: Env): Promise<Response> {
   }
 
   const route = ROUTES.find((candidate) => candidate.method === request.method && candidate.path === url.pathname);
-  if (!route) {
+  if (!route && !BRIDGE_PATHS.has(url.pathname)) {
     return errorJson(404, "not_found", "API route is not available through relay");
   }
 
@@ -63,10 +148,11 @@ export async function api(request: Request, env: Env): Promise<Response> {
   }
 
   const cacheSeconds = Math.max(0, Number(env.PUBLIC_CACHE_SECONDS || "15"));
-  if (route.rpc === "products.list" && !bearerToken(request)) {
-    return cacheShort(url.toString(), cacheSeconds, () => dispatchRpc(request, env, route.rpc));
+  const rpcMethod = route?.rpc || "http.allowed";
+  if ((rpcMethod === "products.list" || isPublicCacheable(url.pathname)) && !bearerToken(request)) {
+    return cacheShort(url.toString(), cacheSeconds, () => dispatchRpc(request, env, rpcMethod));
   }
-  return dispatchRpc(request, env, route.rpc);
+  return dispatchRpc(request, env, rpcMethod);
 }
 
 async function dispatchRpc(request: Request, env: Env, method: string): Promise<Response> {
@@ -146,4 +232,8 @@ async function readPayload(request: Request): Promise<unknown> {
 function clientKey(request: Request, path: string): string {
   const ip = request.headers.get("cf-connecting-ip") || request.headers.get("x-forwarded-for") || "unknown";
   return `${ip}:${path}`;
+}
+
+function isPublicCacheable(path: string): boolean {
+  return path.startsWith("/api/meta/") || path.startsWith("/api/leaderboard/");
 }

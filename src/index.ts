@@ -25,7 +25,14 @@ export default {
       if (url.pathname.startsWith("/api/")) {
         return withCors(await api(request, env));
       }
-      return env.ASSETS.fetch(request);
+      const assetResponse = await env.ASSETS.fetch(request);
+      if (assetResponse.status !== 404 || url.pathname.includes(".")) {
+        return assetResponse;
+      }
+      const fallbackUrl = new URL(request.url);
+      fallbackUrl.pathname = "/index.html";
+      fallbackUrl.search = "";
+      return env.ASSETS.fetch(new Request(fallbackUrl, request));
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unexpected relay error";
       if (message === "request_too_large") {
